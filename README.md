@@ -1,6 +1,6 @@
 # 🛠️ CodeTorch Archive Browser
 
-Welcome to the **CodeTorch Archive Browser**! This is a simple, lightweight web tool built to help you browse, inspect, and download project blueprints saved in the `[SpeedyChuck/codetorch-archive](https://huggingface.co/datasets/SpeedyChuck/codetorch-archive)` backup repository.
+Welcome to the **CodeTorch Archive Browser**! This is a simple, lightweight web tool built to help you browse, inspect, and download archived CodeTorch projects.
 
 ---
 
@@ -11,3 +11,7 @@ Welcome to the **CodeTorch Archive Browser**! This is a simple, lightweight web 
 * **Download in Multiple Formats:** Cleanly export project files to your device as a raw `.json`, a native `.torch` file, or a Scratch-compatible `.sb3` file.
 
 ---
+
+## 📂 How projects are archived:
+When a creator builds and saves a project inside the **CodeTorch** environment, a secure snapshot of their project's blueprint code is captured. This raw project data is automatically mirrored and pushed as a `.json` backup file directly to our dedicated Hugging Face repository data storage (`SpeedyChuck/codetorch-archive`). 
+
