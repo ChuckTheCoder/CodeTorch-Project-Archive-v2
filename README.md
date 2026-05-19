@@ -13,5 +13,5 @@ Welcome to the **CodeTorch Archive Browser**! This is a simple, lightweight web 
 ---
 
 ## 📂 How projects are archived:
-When a creator builds and saves a project inside the **CodeTorch** environment, a secure snapshot of their project's blueprint code is captured. This raw project data is automatically mirrored and pushed as a `.json` backup file directly to our dedicated Hugging Face repository data storage (`SpeedyChuck/codetorch-archive`). 
+When a creator builds and saves a project inside the **CodeTorch** environment, a secure snapshot of their project's code is captured. This raw project data is automatically mirrored and pushed as a `.json` backup file directly to our dedicated Hugging Face repository data storage (`SpeedyChuck/codetorch-archive`). 
 
