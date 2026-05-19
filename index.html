@@ -114,6 +114,12 @@
             </div>
 
             <div id="project-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 hidden"></div>
+
+            <div id="load-more-container" class="mt-8 text-center hidden">
+                <button id="load-more-btn" class="px-8 py-3 bg-gray-900/60 border border-gray-800 hover:bg-gray-800 font-bold text-xs uppercase tracking-widest rounded-xl transition-all text-cyan-400 hover:text-cyan-300 shadow-xl inline-flex items-center gap-2">
+                    <i class="fa-solid fa-circle-plus"></i> Load More Projects
+                </button>
+            </div>
         </div>
     </div>
 
@@ -174,8 +180,12 @@
 
     <script>
         const REPO_ID = "SpeedyChuck/codetorch-archive";
-        let masterRegistry = [];
+        const ITEMS_PER_PAGE = 12;
+        
+        let totalFilesList = []; // Stores the lightweight tree items from API
+        let masterRegistry = []; // Stores actual downloaded project data payloads
         let activeProjectName = "project";
+        let currentFileIndex = 0; // Tracks position in tree list processing
 
         // Connect Database
         async function fetchHuggingFaceDatasetTree() {
@@ -194,34 +204,53 @@
                     return;
                 }
                 
-                masterRegistry = [];
-                
-                // Fetch index fragments concurrently
-                const batchPromises = filteredJSONTargets.map(async (fileObject) => {
-                    try {
-                        const fileRes = await fetch(`https://huggingface.co/datasets/${REPO_ID}/raw/main/${fileObject.path}`);
-                        if (fileRes.ok) {
-                            const rawData = await fileRes.json();
-                            masterRegistry.push({
-                                id: rawData.project_id || fileObject.path.split('/').pop().replace('.json',''),
-                                name: rawData.project_name || "Untitled Game Engine",
-                                user: rawData.username || "Anonymous Dev",
-                                time: rawData.shared_at || "Untracked Execution",
-                                rawPath: fileObject.path
-                            });
-                        }
-                    } catch (e) {}
+                // Sort the file references by implicit ID from filename descending BEFORE downloading content
+                filteredJSONTargets.sort((a, b) => {
+                    const idA = a.path.split('/').pop().replace('.json', '');
+                    const idB = b.path.split('/').pop().replace('.json', '');
+                    return idB.localeCompare(idA, undefined, {numeric: true});
                 });
 
-                await Promise.all(batchPromises);
+                totalFilesList = filteredJSONTargets;
+                masterRegistry = [];
+                currentFileIndex = 0;
                 
-                // Sort by ID (highest first)
-                masterRegistry.sort((a,b) => b.id.localeCompare(a.id, undefined, {numeric: true}));
-                renderRegistryDisplay();
+                // Fetch only the first visible batch page from database
+                await fetchNextBatch();
 
             } catch (err) {
                 statusBox.innerHTML = `<div class="py-10"><i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3"></i><p class="text-sm text-red-400">Failed: ${err.message}</p></div>`;
             }
+        }
+
+        // LOADS SPECIFIC DATA SEGMENTS ON-DEMAND FROM DATABASE
+        async function fetchNextBatch() {
+            const batch = totalFilesList.slice(currentFileIndex, currentFileIndex + ITEMS_PER_PAGE);
+            if (batch.length === 0) return;
+
+            const batchPromises = batch.map(async (fileObject) => {
+                try {
+                    const fileRes = await fetch(`https://huggingface.co/datasets/${REPO_ID}/raw/main/${fileObject.path}`);
+                    if (fileRes.ok) {
+                        const rawData = await fileRes.json();
+                        masterRegistry.push({
+                            id: rawData.project_id || fileObject.path.split('/').pop().replace('.json',''),
+                            name: rawData.project_name || "Untitled Game Engine",
+                            user: rawData.username || "Anonymous Dev",
+                            time: rawData.shared_at || "Untracked Execution",
+                            rawPath: fileObject.path
+                        });
+                    }
+                } catch (e) {}
+            });
+
+            await Promise.all(batchPromises);
+            
+            // Maintain absolute chronological layout priority sorting order
+            masterRegistry.sort((a,b) => b.id.localeCompare(a.id, undefined, {numeric: true}));
+            currentFileIndex += batch.length;
+            
+            renderRegistryDisplay();
         }
 
         function renderRegistryDisplay() {
@@ -229,6 +258,7 @@
             const idFilter = document.getElementById('search-id').value.trim();
             const grid = document.getElementById('project-grid');
             const statusBox = document.getElementById('status-message');
+            const loadMoreContainer = document.getElementById('load-more-container');
 
             const filteredData = masterRegistry.filter(item => {
                 const matchesGlobal = item.name.toLowerCase().includes(query) || item.user.toLowerCase().includes(query);
@@ -236,11 +266,12 @@
                 return matchesGlobal && matchesID;
             });
 
-            document.getElementById('count-total').innerText = masterRegistry.length;
+            document.getElementById('count-total').innerText = totalFilesList.length;
             document.getElementById('count-filtered').innerText = filteredData.length;
 
-            if(filteredData.length === 0) {
+            if(filteredData.length === 0 && currentFileIndex >= totalFilesList.length) {
                 grid.classList.add('hidden');
+                loadMoreContainer.classList.add('hidden');
                 statusBox.classList.remove('hidden');
                 statusBox.innerHTML = `<div class="py-12"><i class="fa-solid fa-inbox text-3xl text-gray-700 mb-3"></i><p class="text-sm text-gray-500">No projects found matching current queries.</p></div>`;
                 return;
@@ -278,6 +309,13 @@
                 `;
                 grid.appendChild(card);
             });
+
+            // Toggle layout visibility constraints based on complete database files count index values
+            if (currentFileIndex < totalFilesList.length) {
+                loadMoreContainer.classList.remove('hidden');
+            } else {
+                loadMoreContainer.classList.add('hidden');
+            }
         }
 
         // BACKUP DATA INSPECTOR HOOK (AUTOMATICALLY EXTRACTS AND DISPLAYS PURE PROJECT FILES)
@@ -376,11 +414,26 @@
             });
         });
 
+        // Search inputs look through downloaded batch cache frames smoothly
+        function handleQueryInput() {
+            renderRegistryDisplay();
+        }
+
         // Event Listeners
         document.getElementById('fetch-index-btn').addEventListener('click', fetchHuggingFaceDatasetTree);
         document.getElementById('status-fetch-trigger').addEventListener('click', fetchHuggingFaceDatasetTree);
-        document.getElementById('search-query').addEventListener('input', renderRegistryDisplay);
-        document.getElementById('search-id').addEventListener('input', renderRegistryDisplay);
+        document.getElementById('search-query').addEventListener('input', handleQueryInput);
+        document.getElementById('search-id').addEventListener('input', handleQueryInput);
+        
+        document.getElementById('load-more-btn').addEventListener('click', async () => {
+            const loadBtn = document.getElementById('load-more-btn');
+            const oldInner = loadBtn.innerHTML;
+            loadBtn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Fetching Data Segment...`;
+            
+            await fetchNextBatch();
+            
+            loadBtn.innerHTML = oldInner;
+        });
     </script>
 </body>
 </html>
