@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeTorch Archive Browser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #0b0f19;
+            color: #f3f4f6;
+        }
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        /* Custom scrollbar for the code view */
+        #modal-code-block::-webkit-scrollbar {
+            width: 8px;
+        }
+        #modal-code-block::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+        #modal-code-block::-webkit-scrollbar-thumb {
+            background: #1f2937;
+            border-radius: 4px;
+        }
+
+        /* Smooth popup animation */
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -48%) scale(0.96);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+        }
+
+        #download-dropdown {
+            animation: fadeInScale 0.2s ease-out forwards;
+            /* Ensures perfect centering regardless of trigger button position */
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%);
+            /* Forces it to the absolute top layer */
+            z-index: 100;
+        }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased flex flex-col justify-between">
+
+    <div class="flex-1">
+        <div class="bg-blue-950/40 border-b border-blue-900/50 px-4 py-2 text-center text-xs text-blue-300 font-medium tracking-wide">
+            <i class="fa-solid fa-circle-info mr-2 text-blue-400"></i>
+            Disclaimer: Projects in this archive are captured and saved the moment they are shared publicly on the platform and are not updated automatically later.
+        </div>
+
+        <nav class="border-b border-gray-800 bg-gray-900/50 sticky top-0 z-50 backdrop-blur-md">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                        <i class="fa-solid fa-gamepad text-white text-sm"></i>
+                    </div>
+                    <div>
+                        <span class="text-lg font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">CodeTorch</span>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-cyan-400 block -mt-1">Archive Browser</span>
+                    </div>
+                </div>
+                <div class="hidden sm:flex items-center space-x-4 text-[11px] font-bold uppercase tracking-widest text-gray-500">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-circle text-[6px] text-emerald-500 animate-pulse"></i> Database Online</span>
+                </div>
+            </div>
+        </nav>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            
+            <div class="mb-8">
+                <div class="glass-panel p-6 rounded-2xl shadow-xl">
+                    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                        <div class="lg:col-span-2 relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-gray-500 text-sm"></i>
+                            <input type="text" id="search-query" placeholder="Search by Title or Developer..." class="w-full bg-gray-950/80 border border-gray-800 rounded-xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:border-cyan-500 transition-all placeholder-gray-500 text-gray-200">
+                        </div>
+                        <div class="relative">
+                            <i class="fa-solid fa-fingerprint absolute left-4 top-3.5 text-gray-500 text-sm"></i>
+                            <input type="text" id="search-id" placeholder="Filter by Project ID..." class="w-full bg-gray-950/80 border border-gray-800 rounded-xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:border-cyan-500 transition-all placeholder-gray-500 text-gray-200">
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="fetch-index-btn" class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-cyan-600/20 flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-sync"></i> Refresh Projects
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex flex-wrap gap-4 text-xs text-gray-400 border-t border-gray-800/60 pt-4">
+                        <div><i class="fa-solid fa-cube text-gray-600 mr-1"></i> Compiled Games: <span id="count-total" class="text-gray-200 font-medium">0</span></div>
+                        <div><i class="fa-solid fa-filter text-gray-600 mr-1"></i> Match Filter: <span id="count-filtered" class="text-cyan-400 font-semibold">0</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="status-message" class="text-center py-20 glass-panel rounded-3xl border border-dashed border-gray-800">
+                <div class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-900/50 mb-4 border border-gray-800">
+                    <i class="fa-solid fa-terminal text-2xl text-cyan-500"></i>
+                </div>
+                <h2 class="text-xl font-bold text-white mb-2">Initialize Local Archive System</h2>
+                <p class="text-sm text-gray-400 mb-6 max-w-sm mx-auto">Click below to fetch records from <code>SpeedyChuck/codetorch-archive</code>.</p>
+                <button id="status-fetch-trigger" class="px-8 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold text-sm rounded-xl transition-all shadow-xl shadow-cyan-600/20">
+                    Synchronize Database
+                </button>
+            </div>
+
+            <div id="project-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 hidden"></div>
+
+            <div id="load-more-container" class="mt-8 text-center hidden">
+                <button id="load-more-btn" class="px-8 py-3 bg-gray-900/60 border border-gray-800 hover:bg-gray-800 font-bold text-xs uppercase tracking-widest rounded-xl transition-all text-cyan-400 hover:text-cyan-300 shadow-xl inline-flex items-center gap-2">
+                    <i class="fa-solid fa-circle-plus"></i> Load More Projects
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="py-6 border-t border-gray-900/40 text-center text-xs">
+        <a href="https://github.com/ChuckTheCoder/CodeTorch-Project-Archive" target="_blank" rel="noopener noreferrer" class="text-gray-500 hover:text-cyan-400 font-medium transition-colors tracking-wide inline-flex items-center gap-1.5">
+            <i class="fa-brands fa-github text-sm"></i> Old Project Archive
+        </a>
+    </footer>
+
+    <div id="player-modal" class="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-2 sm:p-6 hidden backdrop-blur-md">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden shadow-2xl relative">
+            
+            <div id="download-dropdown" class="fixed bg-gray-900 border-2 border-gray-700 rounded-2xl shadow-2xl p-2 flex flex-col gap-1.5 hidden min-w-[200px]">
+                <div class="flex items-center justify-between px-3 pt-2 pb-1">
+                    <div class="text-xs text-white font-bold uppercase tracking-wider">Download As:</div>
+                    <button id="close-dropdown-btn" class="text-gray-500 hover:text-white transition-colors text-xs p-1">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="h-px bg-gray-800 mb-1"></div>
+                <button onclick="executeDownload('json')" class="w-full text-left px-4 py-2.5 rounded-xl text-gray-300 hover:bg-cyan-600 hover:text-white transition-all font-mono text-[13px] flex items-center gap-3">
+                    <i class="fa-solid fa-file-json text-cyan-400 group-hover:text-white"></i>.json (Raw)
+                </button>
+                <button onclick="executeDownload('torch')" class="w-full text-left px-4 py-2.5 rounded-xl text-gray-300 hover:bg-cyan-600 hover:text-white transition-all font-mono text-[13px] flex items-center gap-3">
+                    <i class="fa-solid fa-fire text-amber-400 group-hover:text-white"></i>.torch (Native)
+                </button>
+                <button onclick="executeDownload('sb3')" class="w-full text-left px-4 py-2.5 rounded-xl text-gray-300 hover:bg-cyan-600 hover:text-white transition-all font-mono text-[13px] flex items-center gap-3">
+                    <i class="fa-solid fa-cubes text-emerald-400 group-hover:text-white"></i>.sb3 (Scratch)
+                </button>
+            </div>
+
+            <div class="px-6 py-4 border-b border-gray-800 bg-gray-950/40 flex items-center justify-between relative z-10">
+                <div>
+                    <h3 id="modal-title" class="font-bold text-base sm:text-lg text-white">Project Blueprint Archive</h3>
+                    <p id="modal-meta" class="text-xs text-gray-500 mt-0.5 font-mono"></p>
+                </div>
+                <button id="close-modal-btn" class="h-9 w-9 rounded-xl bg-gray-800 hover:bg-red-900/40 text-gray-400 hover:text-red-400 flex items-center justify-center transition-all">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="flex-1 flex flex-col bg-gray-950 overflow-hidden relative">
+                <div class="p-4 border-b border-gray-800 bg-gray-950/20 text-[10px] font-bold text-gray-500 uppercase tracking-wider flex justify-between items-center relative z-10">
+                    <span>Structural JSON Data Log</span>
+                    <div class="flex items-center gap-2 relative">
+                        <button id="download-trigger-btn" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-gray-300 transition-all flex items-center gap-1 shadow-md">
+                            <i class="fa-solid fa-download"></i> Download
+                        </button>
+                        <button id="copy-raw-btn" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-gray-300 transition-all flex items-center gap-1 shadow-md">
+                            <i class="fa-solid fa-copy"></i> Copy
+                        </button>
+                    </div>
+                </div>
+                <pre id="modal-code-block" class="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-emerald-500 leading-relaxed whitespace-pre-wrap select-all bg-gray-950/80 relative z-0"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const REPO_ID = "SpeedyChuck/codetorch-archive";
+        const ITEMS_PER_PAGE = 12;
+        
+        let totalFilesList = []; // Stores the lightweight tree items from API
+        let masterRegistry = []; // Stores actual downloaded project data payloads
+        let activeProjectName = "project";
+        let currentFileIndex = 0; // Tracks position in tree list processing
+
+        // Connect Database
+        async function fetchHuggingFaceDatasetTree() {
+            const statusBox = document.getElementById('status-message');
+            statusBox.innerHTML = `<div class="py-10"><i class="fa-solid fa-circle-notch fa-spin text-4xl text-cyan-500 mb-4"></i><p class="text-sm text-gray-400">Syncing index logs from Hugging Face Storage...</p></div>`;
+
+            try {
+                const response = await fetch(`https://huggingface.co/api/datasets/${REPO_ID}/tree/main/projects?recursive=true`);
+                if(!response.ok) throw new Error(`Handshake error (${response.status})`);
+                
+                const files = await response.json();
+                const filteredJSONTargets = files.filter(f => f.type === 'file' && f.path.endsWith('.json'));
+
+                if(filteredJSONTargets.length === 0) {
+                    statusBox.innerHTML = `<div class="py-10"><i class="fa-solid fa-folder-open text-3xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">Database connected. No archived game records identified.</p></div>`;
+                    return;
+                }
+                
+                // Sort the file references by implicit ID from filename descending BEFORE downloading content
+                filteredJSONTargets.sort((a, b) => {
+                    const idA = a.path.split('/').pop().replace('.json', '');
+                    const idB = b.path.split('/').pop().replace('.json', '');
+                    return idB.localeCompare(idA, undefined, {numeric: true});
+                });
+
+                totalFilesList = filteredJSONTargets;
+                masterRegistry = [];
+                currentFileIndex = 0;
+                
+                // Fetch only the first visible batch page from database
+                await fetchNextBatch();
+
+            } catch (err) {
+                statusBox.innerHTML = `<div class="py-10"><i class="fa-solid fa-triangle-exclamation text-3xl text-red-500 mb-3"></i><p class="text-sm text-red-400">Failed: ${err.message}</p></div>`;
+            }
+        }
+
+        // LOADS SPECIFIC DATA SEGMENTS ON-DEMAND FROM DATABASE
+        async function fetchNextBatch() {
+            const batch = totalFilesList.slice(currentFileIndex, currentFileIndex + ITEMS_PER_PAGE);
+            if (batch.length === 0) return;
+
+            const batchPromises = batch.map(async (fileObject) => {
+                try {
+                    const fileRes = await fetch(`https://huggingface.co/datasets/${REPO_ID}/raw/main/${fileObject.path}`);
+                    if (fileRes.ok) {
+                        const rawData = await fileRes.json();
+                        masterRegistry.push({
+                            id: rawData.project_id || fileObject.path.split('/').pop().replace('.json',''),
+                            name: rawData.project_name || "Untitled Game Engine",
+                            user: rawData.username || "Anonymous Dev",
+                            time: rawData.shared_at || "Untracked Execution",
+                            rawPath: fileObject.path
+                        });
+                    }
+                } catch (e) {}
+            });
+
+            await Promise.all(batchPromises);
+            
+            // Maintain absolute chronological layout priority sorting order
+            masterRegistry.sort((a,b) => b.id.localeCompare(a.id, undefined, {numeric: true}));
+            currentFileIndex += batch.length;
+            
+            renderRegistryDisplay();
+        }
+
+        function renderRegistryDisplay() {
+            const query = document.getElementById('search-query').value.toLowerCase().trim();
+            const idFilter = document.getElementById('search-id').value.trim();
+            const grid = document.getElementById('project-grid');
+            const statusBox = document.getElementById('status-message');
+            const loadMoreContainer = document.getElementById('load-more-container');
+
+            const filteredData = masterRegistry.filter(item => {
+                const matchesGlobal = item.name.toLowerCase().includes(query) || item.user.toLowerCase().includes(query);
+                const matchesID = idFilter === '' || item.id.toString().includes(idFilter);
+                return matchesGlobal && matchesID;
+            });
+
+            document.getElementById('count-total').innerText = totalFilesList.length;
+            document.getElementById('count-filtered').innerText = filteredData.length;
+
+            if(filteredData.length === 0 && currentFileIndex >= totalFilesList.length) {
+                grid.classList.add('hidden');
+                loadMoreContainer.classList.add('hidden');
+                statusBox.classList.remove('hidden');
+                statusBox.innerHTML = `<div class="py-12"><i class="fa-solid fa-inbox text-3xl text-gray-700 mb-3"></i><p class="text-sm text-gray-500">No projects found matching current queries.</p></div>`;
+                return;
+            }
+
+            statusBox.classList.add('hidden');
+            grid.classList.remove('hidden');
+            grid.innerHTML = '';
+
+            filteredData.forEach(project => {
+                const card = document.createElement('div');
+                card.className = 'glass-panel p-6 rounded-2xl border border-gray-800 hover:border-cyan-900/50 transition-all flex flex-col justify-between group shadow-xl';
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-[10px] font-mono font-bold text-cyan-500 bg-gray-950 border border-gray-800 px-2.5 py-1.5 rounded-lg">ID: ${project.id}</span>
+                            <span class="text-[10px] text-gray-500 font-bold uppercase tracking-wider">${project.time}</span>
+                        </div>
+                        <h4 class="font-bold text-white group-hover:text-cyan-400 transition-colors text-base line-clamp-1 mb-1">${project.name}</h4>
+                        <p class="text-xs text-gray-500 flex items-center mb-4">
+                            <i class="fa-solid fa-user-circle mr-2 text-gray-700"></i>
+                            <a href="https://codetorch.net/en/users/${encodeURIComponent(project.user)}" target="_blank" rel="noopener noreferrer" class="hover:text-cyan-400 hover:underline transition-all">
+                                ${project.user}
+                            </a>
+                        </p>
+                    </div>
+                    <div class="flex flex-col gap-2 mt-2">
+                        <a href="https://codetorch.net/projects/${project.id}?accessKey=2cCePcEO0ZzlNVwoo8514SSXnhoc5vb-SFPLJoLBoF4" target="_blank" rel="noopener noreferrer" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 font-bold text-[11px] uppercase tracking-widest rounded-xl transition-all text-white flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/10">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Project Link
+                        </a>
+                        <button onclick="inspectBackupData('${project.rawPath}', '${btoa(unescape(encodeURIComponent(project.name)))}', '${project.id}')" class="w-full py-2 bg-gray-800/40 border border-gray-800 hover:bg-gray-800 font-medium text-[10px] uppercase tracking-widest rounded-xl transition-all text-gray-400 hover:text-gray-200 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-code"></i> Inspect JSON Data
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+
+            // Toggle layout visibility constraints based on complete database files count index values
+            if (currentFileIndex < totalFilesList.length) {
+                loadMoreContainer.classList.remove('hidden');
+            } else {
+                loadMoreContainer.classList.add('hidden');
+            }
+        }
+
+        // BACKUP DATA INSPECTOR HOOK (AUTOMATICALLY EXTRACTS AND DISPLAYS PURE PROJECT FILES)
+        async function inspectBackupData(filePath, base64Name, projectId) {
+            const modal = document.getElementById('player-modal');
+            const codeBlock = document.getElementById('modal-code-block');
+            
+            activeProjectName = decodeURIComponent(escape(atob(base64Name)));
+            document.getElementById('modal-title').innerText = activeProjectName;
+            document.getElementById('modal-meta').innerText = `PROJECT BLUEPRINT JSON // PROJECT_ID: ${projectId}`;
+            codeBlock.innerText = "Downloading structural blueprint stream from repository...";
+            
+            // Ensure dropdown is reset when opening a new project
+            document.getElementById('download-dropdown').classList.add('hidden');
+            modal.classList.remove('hidden');
+
+            try {
+                const response = await fetch(`https://huggingface.co/datasets/${REPO_ID}/raw/main/${filePath}`);
+                if(!response.ok) throw new Error("Could not fetch target data trail.");
+                
+                const data = await response.json();
+                let projectPayload = data;
+
+                // Strips database wrappers immediately so the interface displays clean SB3 files directly
+                if (data && data.project_code_data) {
+                    projectPayload = data.project_code_data;
+                    if (typeof projectPayload === 'string') {
+                        projectPayload = JSON.parse(projectPayload);
+                    }
+                }
+
+                codeBlock.innerText = JSON.stringify(projectPayload, null, 4);
+            } catch (err) {
+                codeBlock.innerText = `[CRITICAL EXCEPTION] Could not map backup logs: ${err.message}`;
+            }
+        }
+
+        // DOWNLOAD MANAGER EXECUTION
+        function executeDownload(extension) {
+            const textContent = document.getElementById('modal-code-block').innerText;
+            // Prevent downloading placeholder text
+            if (!textContent || textContent.startsWith('[CRITICAL') || textContent.startsWith('Downloading')) return;
+            
+            // Generate clean cross-platform file name string
+            const safeName = activeProjectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() || "project_source";
+            
+            // textContent is already stripped and clean, save it directly
+            const blob = new Blob([textContent], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${safeName}.${extension}`;
+            
+            document.body.appendChild(link);
+            link.click();
+            
+            // Housekeeping cleanup mapping
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            hideDownloadMenu();
+        }
+
+        function hideDownloadMenu() {
+            document.getElementById('download-dropdown').classList.add('hidden');
+        }
+
+        // Toggle Download Extension Popup Layout
+        document.getElementById('download-trigger-btn').addEventListener('click', (e) => {
+            e.stopPropagation(); // Stop click from bubbling to document (which closes it)
+            const menu = document.getElementById('download-dropdown');
+            menu.classList.toggle('hidden');
+        });
+
+        // Close dropdown via 'X' button
+        document.getElementById('close-dropdown-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideDownloadMenu();
+        });
+
+        // Modal Close Actions
+        document.getElementById('close-modal-btn').addEventListener('click', () => {
+            document.getElementById('player-modal').classList.add('hidden');
+            hideDownloadMenu(); // Ensure menu is reset if modal closes
+        });
+        
+        // Copy Code Button Execution
+        document.getElementById('copy-raw-btn').addEventListener('click', () => {
+            const textToCopy = document.getElementById('modal-code-block').innerText;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                const btn = document.getElementById('copy-raw-btn');
+                const oldText = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+                setTimeout(() => { btn.innerHTML = oldText; }, 2000);
+            });
+        });
+
+        // Search inputs look through downloaded batch cache frames smoothly
+        function handleQueryInput() {
+            renderRegistryDisplay();
+        }
+
+        // Event Listeners
+        document.getElementById('fetch-index-btn').addEventListener('click', fetchHuggingFaceDatasetTree);
+        document.getElementById('status-fetch-trigger').addEventListener('click', fetchHuggingFaceDatasetTree);
+        document.getElementById('search-query').addEventListener('input', handleQueryInput);
+        document.getElementById('search-id').addEventListener('input', handleQueryInput);
+        
+        document.getElementById('load-more-btn').addEventListener('click', async () => {
+            const loadBtn = document.getElementById('load-more-btn');
+            const oldInner = loadBtn.innerHTML;
+            loadBtn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Fetching Data Segment...`;
+            
+            await fetchNextBatch();
+            
+            loadBtn.innerHTML = oldInner;
+        });
+    </script>
+</body>
+</html>
