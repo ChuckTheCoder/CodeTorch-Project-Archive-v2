@@ -81,6 +81,7 @@
         const INDEX_URL = `https://huggingface.co/datasets/${REPO_ID}/raw/main/logs/master_project_index.json`;
         let masterRegistry = [];
         let activeProject = null;
+        let thumbnailObserver = null;
 
         async function init() {
             const statusBox = document.getElementById('status-message');
@@ -118,8 +119,15 @@
             document.getElementById('status-message').classList.add('hidden');
             grid.classList.remove('hidden');
             grid.innerHTML = filtered.map(p => `
-                <div class="glass-panel p-6 rounded-2xl border border-gray-800 hover:border-cyan-900/50 transition-all flex flex-col justify-between group shadow-xl">
+                <div class="project-card glass-panel p-6 rounded-2xl border border-gray-800 hover:border-cyan-900/50 transition-all flex flex-col justify-between group shadow-xl" data-id="${p.id}">
                     <div>
+                        <div class="w-full h-40 rounded-xl mb-4 bg-gradient-to-br from-gray-950 to-gray-900 border border-gray-800/80 overflow-hidden flex items-center justify-center relative">
+                            <img id="thumb-${p.id}" class="w-full h-full object-cover opacity-0 transition-opacity duration-300" alt="${p.name} preview">
+                            <div id="spinner-${p.id}" class="absolute inset-0 flex items-center justify-center text-gray-700">
+                                <i class="fa-solid fa-circle-notch fa-spin text-lg"></i>
+                            </div>
+                        </div>
+
                         <div class="text-[10px] font-mono font-bold text-cyan-500 mb-2">ID: ${p.id}</div>
                         <h4 class="font-bold text-white mb-1 group-hover:text-cyan-400 transition-colors">${p.name}</h4>
                         <p class="text-xs text-gray-500 mb-4">${p.user}</p>
@@ -130,6 +138,66 @@
                     </div>
                 </div>
             `).join('');
+
+            // Initiate lazy loading system for newly injected cards
+            setupLazyLoading();
+        }
+
+        function setupLazyLoading() {
+            // Kill existing connections on layout rerender
+            if (thumbnailObserver) {
+                thumbnailObserver.disconnect();
+            }
+
+            thumbnailObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    // Check viewport collision
+                    if (entry.isIntersecting) {
+                        const card = entry.target;
+                        const projectId = card.getAttribute('data-id');
+                        
+                        // Fire-and-forget single resource fetch, then detach target element
+                        observer.unobserve(card);
+                        fetchSingleThumbnail(projectId);
+                    }
+                });
+            }, {
+                rootMargin: "80px 0px" // Preloads assets slightly before reaching screen window boundary
+            });
+
+            // Target elements across DOM
+            document.querySelectorAll('.project-card').forEach(card => {
+                thumbnailObserver.observe(card);
+            });
+        }
+
+        async function fetchSingleThumbnail(projectId) {
+            const imgEl = document.getElementById(`thumb-${projectId}`);
+            const spinnerEl = document.getElementById(`spinner-${projectId}`);
+            
+            if (!imgEl) return;
+
+            try {
+                const response = await fetch(`https://api.codetorch.net/v1/projects/${projectId}`);
+                if (!response.ok) throw new Error();
+                
+                const data = await response.json();
+                
+                if (data && data.thumbnail) {
+                    imgEl.src = data.thumbnail;
+                    imgEl.onload = () => {
+                        imgEl.classList.remove('opacity-0');
+                        if (spinnerEl) spinnerEl.remove();
+                    };
+                } else {
+                    throw new Error();
+                }
+            } catch (error) {
+                // Graceful fallback to image icon if network profile error or null properties occur
+                if (spinnerEl) {
+                    spinnerEl.innerHTML = '<i class="fa-regular fa-image text-gray-600 text-xl"></i>';
+                }
+            }
         }
 
         async function inspect(path, name, id) {
