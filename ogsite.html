@@ -1,0 +1,169 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeTorch Archive Browser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #0b0f19; color: #f3f4f6; }
+        .glass-panel { background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        #modal-code-block::-webkit-scrollbar { width: 8px; }
+        #modal-code-block::-webkit-scrollbar-track { background: #0a0a0a; }
+        #modal-code-block::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+
+    <div class="bg-blue-950/40 border-b border-blue-900/50 px-4 py-2 text-center text-xs text-blue-300 font-medium tracking-wide">
+        <i class="fa-solid fa-circle-info mr-2 text-blue-400"></i>
+        Disclaimer: Projects in this archive are captured and saved the moment they are shared publicly on the platform and are not updated automatically later.
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <div class="mb-8 text-left flex justify-between items-end">
+            <div>
+                <h1 class="text-3xl font-bold text-white tracking-tight">CodeTorch Archive Browser</h1>
+                <p class="text-gray-500 text-sm mt-1">Search and download all archived projects.</p>
+            </div>
+            <div id="stats-counter" class="text-xs font-mono text-gray-500 hidden">
+                Total Archived: <span id="total-count" class="text-cyan-500 font-bold">0</span>
+            </div>
+        </div>
+
+        <div class="glass-panel p-6 rounded-2xl mb-8 shadow-xl">
+            <div class="grid grid-cols-1 lg:grid-cols-6 gap-4">
+                <select id="search-type" class="lg:col-span-1 bg-gray-950/80 border border-gray-800 rounded-xl px-2 py-3 text-sm text-gray-400 focus:outline-none focus:border-cyan-500">
+                    <option value="both">All</option>
+                    <option value="name">Title</option>
+                    <option value="user">Creator</option>
+                </select>
+                <input type="text" id="search-query" placeholder="Search..." class="lg:col-span-3 bg-gray-950/80 border border-gray-800 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-cyan-500 transition-all">
+                <input type="text" id="search-id" placeholder="ID Filter..." class="lg:col-span-1 bg-gray-950/80 border border-gray-800 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-cyan-500 transition-all">
+                <button id="fetch-index-btn" class="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-xl text-sm shadow-lg shadow-cyan-600/20">Load DB</button>
+            </div>
+        </div>
+
+        <div id="status-message" class="text-center py-20 glass-panel rounded-3xl border border-dashed border-gray-800">
+            <h2 class="text-xl font-bold text-white mb-4">Load Archive</h2>
+            <button id="status-fetch-trigger" class="px-8 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold text-sm rounded-xl shadow-xl shadow-cyan-600/20">Sync Data</button>
+        </div>
+
+        <div id="project-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 hidden"></div>
+    </div>
+
+    <footer class="max-w-7xl mx-auto px-4 py-12 text-center">
+        <p class="text-gray-600 text-xs">
+            This tool is an independent archive viewer and is not affiliated with, endorsed by, or connected to CodeTorch. All data is retrieved from public repository sources.
+        </p>
+    </footer>
+
+    <div id="player-modal" class="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 hidden backdrop-blur-md">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl overflow-hidden relative">
+            <div class="px-6 py-4 border-b border-gray-800 bg-gray-950/40 flex justify-between items-center">
+                <div>
+                    <h3 id="modal-title" class="font-bold text-white">Project Blueprint</h3>
+                    <p id="modal-meta" class="text-xs text-gray-500 font-mono"></p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="downloadFile('json')" class="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs text-cyan-400 font-bold uppercase tracking-wider">.json</button>
+                    <button onclick="downloadFile('torch')" class="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs text-amber-400 font-bold uppercase tracking-wider">.torch</button>
+                    <button id="close-modal-btn" class="text-gray-400 px-3 hover:text-white transition-colors"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+            <pre id="modal-code-block" class="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-emerald-500 bg-gray-950/80"></pre>
+        </div>
+    </div>
+
+    <script>
+        const REPO_ID = "SpeedyChuck/codetorch-archive";
+        const INDEX_URL = `https://huggingface.co/datasets/${REPO_ID}/raw/main/logs/master_project_index.json`;
+        let masterRegistry = [];
+        let activeProject = null;
+
+        async function init() {
+            const statusBox = document.getElementById('status-message');
+            statusBox.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-3xl text-cyan-500 mb-4"></i><p class="text-cyan-400">Syncing index...</p>`;
+            try {
+                const res = await fetch(INDEX_URL);
+                const data = await res.json();
+                masterRegistry = data.reverse();
+                document.getElementById('total-count').innerText = masterRegistry.length;
+                document.getElementById('stats-counter').classList.remove('hidden');
+                render();
+            } catch(e) { statusBox.innerHTML = `<p class="text-red-400">Error: ${e.message}</p>`; }
+        }
+
+        function render() {
+            const type = document.getElementById('search-type').value;
+            const query = document.getElementById('search-query').value.toLowerCase().trim();
+            const idFilter = document.getElementById('search-id').value;
+            const grid = document.getElementById('project-grid');
+            
+            const filtered = masterRegistry.filter(i => {
+                let matchType = false;
+                if (type === 'both') {
+                    matchType = (i.name.toLowerCase().includes(query) || i.user.toLowerCase() === query);
+                } else if (type === 'user') {
+                    matchType = (i.user.toLowerCase() === query);
+                } else {
+                    matchType = (i.name.toLowerCase().includes(query));
+                }
+                
+                const matchId = (idFilter === '' || i.id.toString().includes(idFilter));
+                return matchType && matchId;
+            });
+
+            document.getElementById('status-message').classList.add('hidden');
+            grid.classList.remove('hidden');
+            grid.innerHTML = filtered.map(p => `
+                <div class="glass-panel p-6 rounded-2xl border border-gray-800 hover:border-cyan-900/50 transition-all flex flex-col justify-between group shadow-xl">
+                    <div>
+                        <div class="text-[10px] font-mono font-bold text-cyan-500 mb-2">ID: ${p.id}</div>
+                        <h4 class="font-bold text-white mb-1 group-hover:text-cyan-400 transition-colors">${p.name}</h4>
+                        <p class="text-xs text-gray-500 mb-4">${p.user}</p>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <a href="https://codetorch.net/projects/${p.id}?accessKey=2cCePcEO0ZzlNVwoo8514SSXnhoc5vb-SFPLJoLBoF4" target="_blank" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-center rounded-xl text-[10px] font-bold uppercase tracking-widest text-white shadow-lg shadow-cyan-600/10">OPEN PROJECT</a>
+                        <button onclick="inspect('${p.path}', '${p.name.replace(/'/g, "\\'")}', '${p.id}')" class="w-full py-2 bg-gray-800/40 border border-gray-800 hover:bg-gray-800 rounded-xl text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-200 transition-all">INSPECT DATA</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function inspect(path, name, id) {
+            activeProject = { path, name, id, data: null };
+            document.getElementById('modal-title').innerText = name;
+            document.getElementById('modal-meta').innerText = `ID: ${id}`;
+            document.getElementById('player-modal').classList.remove('hidden');
+            const block = document.getElementById('modal-code-block');
+            block.innerText = "Downloading...";
+            try {
+                const res = await fetch(`https://huggingface.co/datasets/${REPO_ID}/raw/main/${path}`);
+                const fullData = await res.json();
+                activeProject.data = fullData.project_code_data || fullData; 
+                block.innerText = JSON.stringify(activeProject.data, null, 4);
+            } catch(e) { block.innerText = "Error loading project."; }
+        }
+
+        function downloadFile(ext) {
+            if(!activeProject.data) return;
+            const blob = new Blob([JSON.stringify(activeProject.data, null, 4)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${activeProject.name.replace(/[^a-z0-9]/gi, '_')}.${ext}`;
+            a.click();
+        }
+
+        document.getElementById('fetch-index-btn').onclick = init;
+        document.getElementById('status-fetch-trigger').onclick = init;
+        document.getElementById('search-query').oninput = render;
+        document.getElementById('search-type').onchange = render;
+        document.getElementById('search-id').oninput = render;
+        document.getElementById('close-modal-btn').onclick = () => document.getElementById('player-modal').classList.add('hidden');
+    </script>
+</body>
+</html>
